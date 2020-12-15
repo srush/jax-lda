@@ -32,7 +32,7 @@ for i, l in enumerate(open(DOCUMENT)):
 DOCUMENTS = i
 
 SIZE = len(data)
-
+print("Data Size", SIZE)
 # Create tables
 key = jax.random.PRNGKey(0)
 data = np.array(data, dtype=np.int32)
@@ -48,41 +48,49 @@ tokens_doc = np.bincount(docs, length=DOCUMENTS)
 
 # Main code
 ALPHA, BETA = 0.1, 0.01
-@jax.jit
+
+
 def token_loop(state, scanned):
     topic_word, topic_document, topic_count = state
     topic_token, data, doc, key = scanned
 
-    topic_word = topic_word.at[topic_token, data].add(-1)
-    topic_document = topic_document.at[doc, topic_token].add(-1)
-    topic_count = topic_count.at[topic_token].add(-1)
+    local_tw = topic_word[:, data].at[topic_token].add(-1)
+    local_td = topic_document[doc].at[topic_token].add(-1)
+    local_tc = topic_count.at[topic_token].add(-1)
 
     # Resample
-    dist = ((topic_word[:, data] + BETA) / (topic_count + VOCAB * BETA)) \
-           * ((topic_document[doc] + ALPHA) / (tokens_doc[doc] + TOPICS * ALPHA))
+    dist = ((local_tw + BETA) / (local_tc + VOCAB * BETA)) \
+           * ((local_td + ALPHA) / (tokens_doc[doc] + TOPICS * ALPHA))
     new_topic = jax.random.categorical(key, np.log(dist))
+
+    def update(_):
+        return (topic_word.at[new_topic, data].add(1).at[topic_token, data].add(-1),
+                topic_document.at[doc, new_topic].add(1).at[doc, topic_token].add(-1),
+                topic_count.at[new_topic].add(1).at[topic_token].add(-1),
+        )
     
-    topic_word = topic_word.at[new_topic, data].add(1)
-    topic_document = topic_document.at[doc, new_topic].add(1)
-    topic_count = topic_count.at[new_topic].add(1)
-    return (topic_word, topic_document, topic_count), (new_topic, None, None, None)
+    return jax.lax.cond((new_topic != topic_token),
+                        update,
+                        lambda _ : (topic_word, topic_document, topic_count), None
+    ), (new_topic, None, None, None)    
+    
 
 @jax.jit
-def mcmc(i, state):
+def mcmc(state):
     topic_count, topic_word, topic_document, topic_token, key = state
     keys = jax.random.split(key, SIZE + 1)
     (topic_word, topic_document, topic_count), (topic_token, _, _, _) = \
       jax.lax.scan(token_loop, 
-                   (topic_word, topic_document, topic_count), 
-                   (topic_token, data, docs, keys[1:]))
+                (topic_word, topic_document, topic_count), 
+                (topic_token, data, docs, keys[1:]))
     return topic_count, topic_word, topic_document, topic_token, keys[0]
 
 def run(topic_word, topic_document, topic_token):
     key = jax.random.PRNGKey(1)
     topic_count = topic_word.sum(-1)
-    # for i in range(EPOCHS):
-    (topic_count, topic_word, topic_document, topic_token, key) = \
-        jax.lax.fori_loop(0, 50, mcmc,  (topic_count, topic_word, topic_document, topic_token, key))
+    for i in range(EPOCHS):
+        (topic_count, topic_word, topic_document, topic_token, key) =  \
+          mcmc((topic_count, topic_word, topic_document, topic_token, key))
     return topic_word, topic_document, topic_token
 topic_word, topic_document, topic_token = run(topic_word, topic_document, topic_token) 
         
