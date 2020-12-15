@@ -21,13 +21,14 @@ for l in open(DOCUMENT):
     tokens = parse(l)
     for t in tokens:
         c[t] += 1
-vocab = {v:i+2 for i, (v, _) in enumerate(c.most_common(VOCAB))}
+vocab = {v:i for i, (v, _) in enumerate(c.most_common(VOCAB))}
 
 data = []
 doc = []
 for i, l in enumerate(open(DOCUMENT)):
     tokens = parse(l)
-    data += [vocab.get(t, 0) for t in tokens]
+    tokens = [t for t in tokens if t in vocab]
+    data += [vocab.get(t) for t in tokens]
     doc += [i] * len(tokens)
 DOCUMENTS = i
 
@@ -96,6 +97,6 @@ topic_word, topic_document, topic_token = run(topic_word, topic_document, topic_
         
 # Print out
 rev = {v:k for k,v in vocab.items()}
-out = topic_word / topic_word.sum(0)
+out = topic_word / topic_word.sum(-1, keepdims=True)
 for i in range(TOPICS):
-    print("TOPIC", i, [rev[int(x)] for x in reversed(np.argsort(out[i])[-5:]) if x > 1])
+    print("TOPIC", i, [rev[int(x)] for x in reversed(np.argsort(out[i])[-5:])])
