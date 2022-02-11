@@ -30,7 +30,7 @@ for i, l in enumerate(open(DOCUMENT)):
     tokens = [t for t in tokens if t in vocab]
     data += [vocab.get(t) for t in tokens]
     doc += [i] * len(tokens)
-DOCUMENTS = i
+DOCUMENTS = i + 1
 
 SIZE = len(data)
 print("Data Size", SIZE)
